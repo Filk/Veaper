@@ -1,3 +1,3 @@
 VEAPER
 
-Resolve Da Vinci to Reaper
+Convert a AAF Resolve Da Vinci to a Reaper Project
