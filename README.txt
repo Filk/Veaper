@@ -6,7 +6,7 @@ Check the Releases page on this repository to download the app for Mac or Window
 
 ---
 for a step-by-step tutorial on what to do in Resolve Da Vinci:
-http://filipelopes.net/veaper
+https://filipelopes.net/veaper
 
 Icon from:
 https://www.flaticon.com/free-icon/multimedia_2205491?term=video&page=1&position=9&origin=search&related_id=2205491
