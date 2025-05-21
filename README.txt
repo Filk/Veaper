@@ -6,6 +6,9 @@ Download the compiled apps or download the source code.
 for a step-by-step tutorial on what to do in Resolve Da Vinci:
 http://filipelopes.net/veaper
 
+Icon from:
+https://www.flaticon.com/free-icon/multimedia_2205491?term=video&page=1&position=9&origin=search&related_id=2205491
+
 --
 
 If you want to hack the code, please do the following:
