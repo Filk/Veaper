@@ -1,8 +1,10 @@
 VEAPER
 
-Convert a AAF Resolve Da Vinci to a Reaper Project.
-Download the compiled apps or download the source code.
+Convert a AAF Resolve Da Vinci to a Reaper Project
 
+Check the Releases page on this repository to download the app for Mac or Windows.
+
+---
 for a step-by-step tutorial on what to do in Resolve Da Vinci:
 http://filipelopes.net/veaper
 
