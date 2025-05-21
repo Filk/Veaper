@@ -26,8 +26,13 @@ pip3 install moviepy
 	this command will install the library moviepy
 
 3] 
-On command line (or terminal), run: 
+Download the source code from this repository
+
+4]
+On command line (or terminal), go to the directory where the source code is and then run:
+
+on Mac: 
 python3 Veaper.py
 
-in windows try:
+on Windows:
 python Veaper.py
