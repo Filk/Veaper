@@ -14,6 +14,8 @@ have_tk = False
 [NOTICE, WARNING, ERROR, NONE] = range(4)
 log_level = WARNING
 
+sampleRateFicheiro = 48000
+
 class AAFInterface:
 
     def __init__(self, myDirectory):
@@ -36,12 +38,15 @@ class AAFInterface:
         self.essence_data = {}
         return True
 
-    def build_wav(self, fname, data, depth=24, rate=48000, channels=2):
+    def build_wav(self, fname, data, depth, rate, channels=2):
         with wave.open(fname, "wb") as f:
+            print(rate)
             f.setnchannels(channels)
             f.setsampwidth(int(depth / 8))
             f.setframerate(rate)
             f.writeframesraw(data)
+            global sampleRateFicheiro
+            sampleRateFicheiro = rate
             f.close()
 
     def aafrational_value(self, rational):
@@ -427,7 +432,7 @@ class AAFInterface:
 
 def extract_audio_from_mxf(mxf_file_path, output_file_path):
     audio_clip = AudioFileClip(mxf_file_path)
-    audio_clip.write_audiofile(output_file_path)
+    audio_clip.write_audiofile(output_file_path, fps=sampleRateFicheiro)
     audio_clip.close()
 
 
@@ -511,7 +516,7 @@ def import_aaf(myDirectory, myAFFfile):
         data = json.load(json_file)
 
     # Start building the Reaper project file
-    reaper_project = '''<REAPER_PROJECT 0.1 "7.15/OSX64-clang" 1746964994\n
+    reaper_project = '''<REAPER_PROJECT 0.1 "7.xxx" 1746964994\n
       <NOTES 0 2
       >
       RIPPLE 0
