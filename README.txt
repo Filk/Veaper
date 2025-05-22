@@ -1,6 +1,5 @@
 VEAPER
-
-Convert a AAF Resolve Da Vinci to a Reaper Project
+Convert an Avid AAF Resolve Da Vinci Project to a Reaper Project
 
 Check the Releases page on this repository to download the app for Mac or Windows.
 
@@ -29,6 +28,8 @@ Now you need to install two externals libraries. To do it, you need to open the 
 	this command will install the library pyaaf2
 pip3 install moviepy
 	this command will install the library moviepy
+
+*** in windows it might not be necessary to type "pip3. You can just type "pip" and keep the rest the same.
 
 3] 
 Download the source code from this repository
