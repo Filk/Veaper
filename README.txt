@@ -12,7 +12,7 @@ https://www.flaticon.com/free-icon/multimedia_2205491?term=video&page=1&position
 
 --
 
-If you want to hack the code, please do the following:
+If you want to hack the code or use it from the command line, please do the following:
 
 1]
 Install Python 3
