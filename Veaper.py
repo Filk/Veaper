@@ -3,9 +3,8 @@ from tkinter import ttk, filedialog, messagebox
 import os
 import webbrowser
 
-from veaperProcessing import import_aaf  # This is your main processing function
+from veaperProcessing import import_aaf
 
-ficheiroAFF = ""
 
 class VeaperApp(tk.Tk):
     def __init__(self):
@@ -51,11 +50,8 @@ class VeaperApp(tk.Tk):
         file = filedialog.askopenfilename(filetypes=[("AAF files", "*.aaf")])
         if file:
             self.dragged_file_AAF = file
-            #file = caminho para o ficheiro aaf
             self.aaf_display.delete(0, tk.END)
             self.aaf_display.insert(tk.END, os.path.basename(file))
-            global ficheiroAFF
-            ficheiroAFF=file
 
     def start_processing(self):
         if not self.dragged_file_AAF:
@@ -69,7 +65,7 @@ class VeaperApp(tk.Tk):
             workdir = os.path.dirname(self.dragged_file_AAF)
             os.chdir(workdir)
 
-            import_aaf(workdir,ficheiroAFF)  # Call your backend processor
+            import_aaf(workdir, self.dragged_file_AAF)
 
             self.status_label.config(text="Done! Check the AAF file folder and find the Reaper Project")
             messagebox.showinfo("Finished", "Processing completed successfully.")

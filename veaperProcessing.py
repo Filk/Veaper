@@ -3,9 +3,10 @@ import aaf2
 import os
 import sys
 import wave
+import uuid
+import shutil
 import urllib.parse
 import urllib.request
-import pprint
 import json
 from moviepy import AudioFileClip
 
@@ -110,6 +111,7 @@ class AAFInterface:
         for master_mob in self.aaf.content.mastermobs():
             self.essence_data[master_mob.name] = {}
             for slot in master_mob.slots:
+                source_mob = None
 
                 if isinstance(slot.segment, aaf2.components.Sequence):
                     source_mob = None
@@ -126,6 +128,8 @@ class AAFInterface:
                 if slot.segment.media_kind == "Picture":
                     # Video files cannot be embedded in the AAF.
                     self.essence_data[master_mob.name][slot.slot_id] = self.get_linked_essence(source_mob)
+                    continue
+                if source_mob is None:
                     continue
                 if source_mob.essence:
                     filename = os.path.join(target, master_mob.name + slot.name + ".wav")
@@ -333,6 +337,7 @@ class AAFInterface:
                 if seq_data:
                     data.append({
                         "name": "",
+                        "kind": "picture",
                         "items": seq_data
                     })
         elif isinstance(slot.segment, aaf2.components.Sequence):
@@ -340,6 +345,7 @@ class AAFInterface:
             if seq_data:
                 data.append({
                     "name": slot.name,
+                    "kind": "picture",
                     "items": seq_data
                 })
 
@@ -347,7 +353,8 @@ class AAFInterface:
 
     def get_sound_track(self, slot):
         data = {
-            "name": slot.name
+            "name": slot.name,
+            "kind": "sound",
         }
         edit_rate = self.aafrational_value(slot.edit_rate)
         segment = slot.segment
@@ -408,6 +415,7 @@ class AAFInterface:
                         data["tracks"] += picture_tracks
                 elif slot.media_kind in ["Sound", "LegacySound"]:
                     track_data = self.get_sound_track(slot)
+                    track_data["kind"] = "sound"
                     track_data = self.collect_vol_pan_automation(track_data)
                     data["tracks"].append(track_data)
                 elif slot.media_kind == "DescriptiveMetadata":
@@ -430,93 +438,124 @@ class AAFInterface:
             print("Could not get file identity metadata.", WARNING)
             return {}
 
-def extract_audio_from_mxf(mxf_file_path, output_file_path):
-    audio_clip = AudioFileClip(mxf_file_path)
-    audio_clip.write_audiofile(output_file_path, fps=sampleRateFicheiro)
+def new_eguid():
+    return "{" + str(uuid.uuid4()).upper() + "}"
+
+
+def get_audio_tracks(data):
+    return [track for track in data.get("tracks", []) if track.get("kind") == "sound"]
+
+
+def resolve_media_path(source, aaf_directory):
+    if source and os.path.isfile(source):
+        return source
+    local = os.path.join(aaf_directory, os.path.basename(source))
+    if os.path.isfile(local):
+        return local
+    return source
+
+
+def format_reaper_fade(direction, item):
+    fade_key = "fadein" if direction == "in" else "fadeout"
+    type_key = "fadeintype" if direction == "in" else "fadeouttype"
+    length = item.get(fade_key, 0) or 0
+    shape = item.get(type_key, 0)
+    reaper_shape = 2 if shape == 1 else 0
+    tag = "FADEIN" if direction == "in" else "FADEOUT"
+    return f"        {tag} 1 {length} {reaper_shape} 1 0 0 0\n"
+
+
+def build_envelope_block(tag, points, value_key="value"):
+    lines = [
+        f"    <{tag}",
+        f"      EGUID {new_eguid()}",
+        "      ACT 1 -1",
+        "      VIS 1 1 1",
+        "      LANEHEIGHT 0 0",
+        "      ARM 0",
+        "      DEFSHAPE 0 -1 -1",
+    ]
+    for point in sorted(points, key=lambda p: p["time"]):
+        lines.append(f"      PT {point['time']} {point[value_key]} 0")
+    lines.append("    >")
+    return "\n".join(lines) + "\n"
+
+
+def detect_sample_rate(wav_path):
+    try:
+        with wave.open(wav_path, "rb") as wav_file:
+            return wav_file.getframerate()
+    except Exception:
+        return None
+
+
+def convert_mxf_to_wav(mxf_path, wav_path):
+    audio_clip = AudioFileClip(mxf_path)
+    sample_rate = audio_clip.fps or 48000
+    audio_clip.write_audiofile(wav_path, fps=sample_rate, logger=None)
     audio_clip.close()
+    return sample_rate
 
 
-def import_aaf(myDirectory, myAFFfile):
+def get_referenced_sources(data):
+    sources = set()
+    for track in get_audio_tracks(data):
+        for item in track.get("items", []):
+            source = item.get("source", "")
+            if source:
+                sources.add(source)
+    return sources
 
-    global log_level
-    aaf_interface = AAFInterface(myDirectory)
 
-    #if len(sys.argv) < 2:
-        #print("No input file provided.", ERROR)
-        #return
-    #filename = sys.argv[1]
-    filename = myAFFfile
-    print(filename)
+def convert_referenced_media(sources, aaf_directory, destination_folder):
+    sample_rates = []
 
-    #name of the destination folder for translation
-    target = "Reaper_from_DaVinci"
+    for source in sources:
+        resolved = resolve_media_path(source, aaf_directory)
+        if not resolved or not os.path.isfile(resolved):
+            print("Missing media file: %s" % source, WARNING)
+            continue
 
-    if not os.path.exists(target):
-        os.mkdir(target)
-    log_level = NOTICE
+        ext = os.path.splitext(resolved)[1].lower()
+        if ext == ".mxf":
+            wav_name = os.path.splitext(os.path.basename(resolved))[0] + ".wav"
+            wav_path = os.path.join(destination_folder, wav_name)
+            if not os.path.isfile(wav_path):
+                print("Converting %s..." % os.path.basename(resolved))
+                rate = convert_mxf_to_wav(resolved, wav_path)
+            else:
+                rate = detect_sample_rate(wav_path)
+            if rate:
+                sample_rates.append(rate)
+        elif ext == ".wav":
+            dest_path = os.path.join(destination_folder, os.path.basename(resolved))
+            if os.path.abspath(resolved) != os.path.abspath(dest_path) and not os.path.isfile(dest_path):
+                shutil.copy2(resolved, dest_path)
+            rate = detect_sample_rate(dest_path if os.path.isfile(dest_path) else resolved)
+            if rate:
+                sample_rates.append(rate)
 
-    if not aaf_interface.open(filename): return
-    print("geting data from %s..." % filename)
-    meta = aaf_interface.get_aaf_metadata()
-    print("AAF created on %s with %s %s version %s using %s" % 
-        (str(meta["date"]), meta["company"], meta["product"], meta["version"], meta["platform"])
-    )
+    if sample_rates:
+        return max(set(sample_rates))
+    return 48000
 
-    aaf_interface.extract_essence(target, None)
 
-    composition_list = aaf_interface.get_composition_list()
-    composition_id = 0
-    if len(composition_list) > 1:
-        composition_id = UserInteraction.get_composition(composition_list)
-    composition = aaf_interface.get_composition(composition_id)
+def rewrite_sources_for_reaper(data, aaf_directory):
+    for track in get_audio_tracks(data):
+        for item in track.get("items", []):
+            source = item.get("source", "")
+            if not source:
+                continue
+            resolved = resolve_media_path(source, aaf_directory)
+            basename = os.path.basename(resolved or source)
+            name, ext = os.path.splitext(basename)
+            if ext.lower() == ".mxf":
+                basename = name + ".wav"
+            item["source"] = basename
 
-    #print(json.dumps(composition))
-    json_dados= json.dumps(composition, indent=4)
 
-    #file_path refere-se ao caminho para o ficheiro json
-    file_path = os.path.join(target, "Audio_data_from_aaf.json")
-    with open(file_path, "w") as json_file:
-        json_file.write(json_dados)
-
-    #SCRIPT 2
-    # Directory paths
-    # Construct the full paths to where the mxf are located
-    mxf_directory = myDirectory
-    
-    # The destination project folder
-    destination_folder = os.path.join(mxf_directory, target)
-
-    # Iterate through MXF files in the subdirectory
-    for filename in os.listdir(mxf_directory):
-        if filename.endswith('.mxf'):
-            mxf_file_path = os.path.join(mxf_directory, filename)
-            audio_filename = os.path.splitext(filename)[0] + '.wav'
-            output_file_path = os.path.join(destination_folder, audio_filename)
-            extract_audio_from_mxf(mxf_file_path, output_file_path)
-
-    #SCRIPT 3
-    with open(file_path, "r") as json_file:
-        data = json.load(json_file)
-
-    tracks = data["tracks"]
-
-    for track in data['tracks']:
-        for item in track['items']:
-            if 'source' in item:
-                filename = os.path.basename(item['source']).replace('mxf', 'wav')
-                new_source = filename
-                item['source']= new_source
-                print(item['source'])
-
-    with open(file_path, "w") as json_file:
-        json.dump(data, json_file, indent=4)
-
-    #SCRIPT 4
-    with open(file_path, "r") as json_file:
-        data = json.load(json_file)
-
-    # Start building the Reaper project file
-    reaper_project = '''<REAPER_PROJECT 0.1 "7.xxx" 1746964994\n
+def build_reaper_project_header(sample_rate):
+    return f'''<REAPER_PROJECT 0.1 "7.xxx" 1746964994
       <NOTES 0 2
       >
       RIPPLE 0
@@ -562,7 +601,7 @@ def import_aaf(myDirectory, myAFFfile):
       ITEMMIX 0
       DEFPITCHMODE 589824 0
       TAKELANE 1
-      SAMPLERATE 48000 0 0
+      SAMPLERATE {sample_rate} 0 0
       <RENDER_CFG
         ZXZhdxgAAA==
       >
@@ -592,7 +631,7 @@ def import_aaf(myDirectory, myAFFfile):
       MASTER_FX 1
       MASTER_SEL 0
       <MASTERPLAYSPEEDENV
-        EGUID {D4B273DC-4864-8147-9834-B9721B266C59}
+        EGUID {{D4B273DC-4864-8147-9834-B9721B266C59}}
         ACT 0 -1
         VIS 0 1 1
         LANEHEIGHT 0 0
@@ -600,7 +639,7 @@ def import_aaf(myDirectory, myAFFfile):
         DEFSHAPE 0 -1 -1
       >
       <TEMPOENVEX
-        EGUID {348B8534-B465-0A47-A8E6-752B78926A42}
+        EGUID {{348B8534-B465-0A47-A8E6-752B78926A42}}
         ACT 0 -1
         VIS 1 0 1
         LANEHEIGHT 0 0
@@ -609,73 +648,151 @@ def import_aaf(myDirectory, myAFFfile):
       >
       <PROJBAY
       >
-    '''
+'''
 
-    # Add tracks
-    #reaper_project += '  <TRACKS {}\n'.format(len(data['tracks']))
-    for track in data['tracks']:
-        reaper_project += '   <TRACK\n'
-        reaper_project += '    NAME {}\n'.format(track['name'].replace(' ', '\u00A0'))
-        reaper_project += '    PEAKCOL 0\n'
-        reaper_project += '    BEAT -1\n'
-        reaper_project += '    AUTOMODE 0\n'
-        reaper_project += '    VOLPAN 1 0 -1 -1 1\n'
-        reaper_project += '    MUTESOLO 0 0 0\n'
-        reaper_project += '    IPHASE 0\n'
-        reaper_project += '    PLAYOFFS 0 1\n'
-        reaper_project += '    ISBUS 0 0\n'
-        reaper_project += '    BUSCOMP 0 0 0 0 0\n'
-        reaper_project += '    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0\n'
-        reaper_project += '    SEL 1\n'
-        reaper_project += '    REC 0 0 1 0 0 0 0 0\n'
-        reaper_project += '    VU 2\n'
-        reaper_project += '    TRACKHEIGHT 0 0 0 0 0 0\n'
-        reaper_project += '    INQ 0 0 0 0.5 100 0 0 100\n'
-        reaper_project += '    NCHAN 2\n'
-        reaper_project += '    FX 1\n'
-        reaper_project += '    PERF 0\n'
-        reaper_project += '    MIDIOUT -1\n'
-        reaper_project += '    MAINSEND 1 0\n'    
-        #reaper_project += '   PANNING {}\n'.format(track['panning'])
-        
-        # Add items
-        #reaper_project += '      <ITEM {}\n'.format(len(track['items']))
-        for item in track['items']:
-            file_name = os.path.basename(item['source'])
-            reaper_project += '       <ITEM\n'
-            reaper_project += '        POSITION {}\n'.format(item['position'])
-            reaper_project += '        SNAPOFFS 0\n'
-            reaper_project += '        LENGTH {}\n'.format(item['duration'])
-            reaper_project += '        LOOP 0\n'
-            reaper_project += '        ALLTAKES 0\n'
-            reaper_project += '        FADEIN 1 0.01 0 1 0 0 0\n'
-            reaper_project += '        FADEOUT 1 0.01 0 1 0 0 0\n'
-            reaper_project += '        MUTE 0 0\n'
-            reaper_project += '        SEL 0\n'
-            reaper_project += '        IID 1\n'
-            reaper_project += '        NAME {}\n'.format(file_name)
-            reaper_project += '        VOLPAN 1 0 1 -1\n'
-            reaper_project += '        SOFFS 0\n'
-            reaper_project += '        PLAYRATE 1 1 0 -1 0 0.0025\n'
-            reaper_project += '        CHANMODE 0\n'
-            reaper_project += '        <SOURCE WAVE\n'
-            reaper_project += '        FILE "{}"\n'.format(item['source'])
-            reaper_project += '        >\n'
-            #reaper_project += '       OFFSET {}\n'.format(item['offset'])
-            reaper_project += '        >\n'
-        reaper_project += '      >\n'
-        
-    reaper_project += '  >\n'
-    reaper_project += '>\n'
 
-    # Print the resulting Reaper project file
-    print(reaper_project)
+def build_reaper_track(track):
+    track_name = track.get("name", "Track").replace(" ", "\u00A0")
+    track_pan = track.get("panning", 0)
+    lines = [
+        "   <TRACK",
+        f"    NAME {track_name}",
+        "    PEAKCOL 0",
+        "    BEAT -1",
+        "    AUTOMODE 0",
+        f"    VOLPAN 1 {track_pan} -1 -1 1",
+        "    MUTESOLO 0 0 0",
+        "    IPHASE 0",
+        "    PLAYOFFS 0 1",
+        "    ISBUS 0 0",
+        "    BUSCOMP 0 0 0 0 0",
+        "    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0",
+        "    SEL 0",
+        "    REC 0 0 1 0 0 0 0 0",
+        "    VU 2",
+        "    TRACKHEIGHT 0 0 0 0 0 0",
+        "    INQ 0 0 0 0.5 100 0 0 100",
+        "    NCHAN 2",
+        "    FX 1",
+        "    PERF 0",
+        "    MIDIOUT -1",
+        "    MAINSEND 1 0",
+    ]
 
-    filenameReaper = "my_project.rpp"  # Specify the desired file name with the ".rpp" extension
+    if track.get("volume_envelope"):
+        lines.append(build_envelope_block("VOLENV", track["volume_envelope"]).rstrip())
+    if track.get("panning_envelope"):
+        lines.append(build_envelope_block("PANENV", track["panning_envelope"]).rstrip())
 
-    #destination folder for reaper file
-    destination_folder_reaper_file = os.path.join(destination_folder, filenameReaper)
+    for item in track.get("items", []):
+        source = item.get("source", "")
+        if not source:
+            continue
 
-    with open(destination_folder_reaper_file, "w") as file:
+        volume = item.get("volume", 1)
+        playback_rate = item.get("playbackrate", 1)
+        source_offset = item.get("offset", 0) or 0
+        file_name = os.path.basename(source)
+
+        lines.extend([
+            "    <ITEM",
+            f"     POSITION {item['position']}",
+            "     SNAPOFFS 0",
+            f"     LENGTH {item['duration']}",
+            "     LOOP 0",
+            "     ALLTAKES 0",
+            format_reaper_fade("in", item).rstrip(),
+            format_reaper_fade("out", item).rstrip(),
+            "     MUTE 0 0",
+            "     SEL 0",
+            "     IID 1",
+            f"     NAME {file_name}",
+            f"     VOLPAN {volume} 0 1 -1",
+            f"     SOFFS {source_offset}",
+            f"     PLAYRATE {playback_rate} 1 0 -1 0 0.0025",
+            "     CHANMODE 0",
+            "     <SOURCE WAVE",
+            f'      FILE "{source}"',
+            "     >",
+            "    >",
+        ])
+
+    lines.append("   >")
+    return "\n".join(lines) + "\n"
+
+
+def build_reaper_project(data, sample_rate):
+    project = build_reaper_project_header(sample_rate)
+    for track in get_audio_tracks(data):
+        project += build_reaper_track(track)
+    project += "  >\n>\n"
+    return project
+
+
+def parse_aaf(aaf_interface, filename, target):
+    if not aaf_interface.open(filename):
+        return None
+
+    print("Getting data from %s..." % filename)
+    meta = aaf_interface.get_aaf_metadata()
+    if meta:
+        print(
+            "AAF created on %s with %s %s version %s using %s"
+            % (
+                str(meta.get("date", "")),
+                meta.get("company", ""),
+                meta.get("product", ""),
+                meta.get("version", ""),
+                meta.get("platform", ""),
+            )
+        )
+
+    aaf_interface.extract_essence(target, None)
+
+    composition_list = aaf_interface.get_composition_list()
+    composition_id = 0
+    if len(composition_list) > 1:
+        print(
+            "Multiple compositions found, using first: %s" % composition_list[0],
+            WARNING,
+        )
+
+    return aaf_interface.get_composition(composition_id)
+
+
+def import_aaf(myDirectory, myAAFfile):
+    global log_level
+
+    aaf_interface = AAFInterface(myDirectory)
+    target = "Reaper_from_DaVinci"
+    destination_folder = os.path.join(myDirectory, target)
+
+    if not os.path.exists(destination_folder):
+        os.mkdir(destination_folder)
+
+    log_level = NOTICE
+
+    composition = parse_aaf(aaf_interface, myAAFfile, destination_folder)
+    if composition is None:
+        return
+
+    json_path = os.path.join(destination_folder, "Audio_data_from_aaf.json")
+    with open(json_path, "w") as json_file:
+        json.dump(composition, json_file, indent=4)
+
+    referenced_sources = get_referenced_sources(composition)
+    sample_rate = convert_referenced_media(referenced_sources, myDirectory, destination_folder)
+
+    rewrite_sources_for_reaper(composition, myDirectory)
+
+    with open(json_path, "w") as json_file:
+        json.dump(composition, json_file, indent=4)
+
+    reaper_project = build_reaper_project(composition, sample_rate)
+
+    rpp_path = os.path.join(destination_folder, "my_project.rpp")
+    with open(rpp_path, "w") as file:
         file.write(reaper_project)
+
+    print("Reaper project written to %s" % rpp_path)
 
