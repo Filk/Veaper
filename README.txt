@@ -1,61 +1,103 @@
 VEAPER
-Convert an Avid AAF Resolve Da Vinci Project to a Reaper Project
-Check the Releases page on this repository to download the app for Mac or Windows.
+Convert a DaVinci Resolve AAF export into a Reaper project (.rpp).
+
+Veaper reads the timeline from a Resolve AAF file, converts referenced MXF audio
+to WAV, and builds a Reaper project with clip positions, source in-points,
+fades, volume, pan, and playback speed where available in the AAF.
+
+Step-by-step tutorial for exporting from DaVinci Resolve:
+https://filipelopes.net/veaper
 
 ---
-for a step-by-step tutorial on what to do in Resolve Da Vinci:
-https://filipelopes.net/veaper
---
+REQUIREMENTS
 
-If you want to hack the code or use it from the command line, please do the following:
+- Python 3.9 or newer
+- FFmpeg (required by MoviePy for MXF audio conversion)
+- Your AAF file and its MXF media files in the same folder
 
-1]
-Install Python 3
-1 - Visit the official Python website: https://www.python.org/
-2 - Go to the Downloads section and download the latest version.
-3 - Choose either the 32-bit or 64-bit version, depending on your system
-4 - On the first page of the installer, make sure to check the box that says "Add Python 3.x to PATH". This will allow you to use Python from the command line (WINDOWS) or Terminal (MAC) easily.
-5 - If you are running Windows, don´t forget to restart (of course...windows... ;))
-6 -  To verify the installation, you can open the command prompt and type python3 --version (MAC) or python --version (WINDOWS). You should see the version number of Python displayed.
+---
+INSTALLATION
 
-2] 
-Now you need to install two externals libraries. To do it, you need to open the command line (WINDOWS) or Terminal (MAC) and type:
-“pip3 install pyaaf2”
-	this command will install the library pyaaf2
-pip3 install moviepy
-	this command will install the library moviepy
+1] Install Python 3
 
-*** in windows it might not be necessary to type "pip3. You can just type "pip" and keep the rest the same.
+   Download from https://www.python.org/
+   During installation, enable "Add Python to PATH" (Windows).
 
-3] 
-Download the source code from this repository
+   Verify:
+   Mac:     python3 --version
+   Windows: python --version
 
-4]
-On command line (or terminal), go to the directory where the source code is and then run:
+2] Install FFmpeg
 
-on Mac: 
-python3 Veaper.py
+   MoviePy needs FFmpeg to extract audio from MXF files.
 
-on Windows:
-python Veaper.py
+   Mac (Homebrew):  brew install ffmpeg
+   Windows:         download from https://ffmpeg.org/download.html
+                    and add ffmpeg to your PATH
 
-You should see now the app ready to be used.
+   Verify:  ffmpeg -version
 
-5]
-I have used pyinstaller library to compile and create the apps.
+3] Install Python dependencies
 
---
-KNOWN BUGS (last updated on 3 june 2025):
-Windows:
-	a) when running the app, sometimes i get the message - "NoneType" object has no attributte ´write´ -. I haven´t find time to fix this. According to stackoverflow: " NoneType means that instead of an instance of whatever Class or Object you think you're working with, you've actually got None. That usually means that an assignment or function call up above failed or returned an unexpected result.". If I run the code through the terminal, it runs fine.
+   Mac:
+   pip3 install pyaaf2 moviepy
 
-Mac:
-	a) when I open the app, it will tell me it is from an unknown identifier, thus, it will not open. You have to give it permission to open in Preferences -> Security & Privacy.
-	b) when I open the app, after permission were given, sometimes it does not open right away. I have to click two or three times, but it will open.
-	c) when it is converting the Da Vinci to Reaper, sometimes it opens a new window with the same app. Ignore that and close it. It is a known bug combining Mac + Python and PyInstaller.
-	
---
-CREDITS:
+   Windows:
+   pip install pyaaf2 moviepy
+
+4] Download this repository
+
+   git clone https://github.com/Filk/Veaper.git
+   or download the ZIP from GitHub.
+
+---
+HOW TO USE
+
+1. Export an AAF from DaVinci Resolve (see tutorial link above).
+2. Keep all MXF (and other linked media) files in the same folder as the AAF.
+3. Open a terminal/command prompt and go to the Veaper folder.
+4. Run the app:
+
+   Mac:
+   python3 Veaper.py
+
+   Windows:
+   python Veaper.py
+
+5. In the app:
+   - Click the grey area and select your .aaf file
+   - Click "Click here to start process and wait"
+   - Wait until processing finishes (MXF conversion can take a while)
+
+6. Open the output in Reaper:
+
+   Inside the folder where your AAF lives, open:
+   Reaper_from_DaVinci/my_project.rpp
+
+   That folder also contains:
+   - converted .wav files
+   - Audio_data_from_aaf.json (debug/reference data)
+
+---
+NOTES
+
+- Pre-built Mac/Windows apps may not be available on the Releases page.
+  Running from source (instructions above) is the recommended method for now.
+- If the AAF references many MXF files, the first run may take several minutes.
+- Reaper resolves media paths relative to the .rpp file, so keep the WAV files
+  inside Reaper_from_DaVinci/ alongside my_project.rpp.
+
+---
+BUILDING A STANDALONE APP (OPTIONAL)
+
+Developers can package Veaper with PyInstaller:
+
+   pip install pyinstaller
+   pyinstaller --onefile --windowed Veaper.py
+
+---
+CREDITS
+
 Coding: Filipe Lopes
 Help to test: Luís Rocha
 Icon: https://www.flaticon.com/free-icon/multimedia_2205491?term=video&page=1&position=9&origin=search&related_id=2205491
