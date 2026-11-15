@@ -37,10 +37,11 @@ INSTALLATION
 
    Verify:  ffmpeg -version
 
-3] Install Python dependencies
+3] Install Python dependencies:
 
    Mac:
    pip3 install pyaaf2 moviepy
+
 
    Windows:
    pip install pyaaf2 moviepy
@@ -49,6 +50,13 @@ INSTALLATION
 
    git clone https://github.com/Filk/Veaper.git
    or download the ZIP from GitHub.
+
+5] Open the terminal and go to the folder where Veaper.py is then run:
+   python3 -m pip install pyaaf2
+
+   and the run:
+   python3 -m pip install "moviepy>=2,<3"
+
 
 ---
 HOW TO USE
