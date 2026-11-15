@@ -64,12 +64,8 @@ HOW TO USE
    Windows:
    python Veaper.py
 
-5. In the app:
-   - Click the grey area and select your .aaf file
-   - Click "Click here to start process and wait"
-   - Wait until processing finishes (MXF conversion can take a while)
 
-6. Open the output in Reaper:
+5. Open the output in Reaper:
 
    Inside the folder where your AAF lives, open:
    Reaper_from_DaVinci/my_project.rpp
