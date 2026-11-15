@@ -72,8 +72,9 @@ HOW TO USE
    Windows:
    python Veaper.py
 
+5. An app will open. Drag the aaf file onto the app and then wait.
 
-5. Open the output in Reaper:
+6. Open the output in Reaper:
 
    Inside the folder where your AAF lives, open:
    Reaper_from_DaVinci/my_project.rpp
