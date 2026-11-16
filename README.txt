@@ -9,96 +9,91 @@ Step-by-step tutorial for exporting from DaVinci Resolve:
 https://filipelopes.net/veaper
 
 ---
-REQUIREMENTS
+USE THE APP
 
-- Python 3.9 or newer
-- FFmpeg (required by MoviePy for MXF audio conversion)
-- Your AAF file and its MXF media files in the same folder
+You do not need Python, pip, or a terminal.
 
----
-INSTALLATION
+Mac
+1. Unzip Veaper-mac.zip.
+2. Move Veaper.app to your Applications folder.
+3. The first time, macOS will say it cannot verify the developer.
+   Right-click Veaper, choose Open, then choose Open again.
+   If that choice is missing, open System Settings, go to Privacy & Security,
+   and click Open Anyway.
+4. Click "1. Choose AAF file".
+5. Click "2. Create Reaper project" and wait. Large projects take a few minutes.
+6. Open the project in Reaper:
+   inside the AAF's folder, open Reaper_from_DaVinci/my_project.rpp
 
-1] Install Python 3
+You can also drop an AAF file onto the Veaper icon.
 
-   Download from https://www.python.org/
-   During installation, enable "Add Python to PATH" (Windows).
+Windows
+1. Unzip Veaper-windows.zip.
+2. Double-click Veaper.exe.
+   Windows may ask you to confirm because the app is not from the Store.
+3. Follow the same two steps as on Mac.
 
-   Verify:
-   Mac:     python3 --version
-   Windows: python --version
+Keep every MXF file in the same folder as the AAF. The WAV files have to stay
+next to my_project.rpp, or Reaper will not find them.
 
-2] Install FFmpeg
-
-   MoviePy needs FFmpeg to extract audio from MXF files.
-
-   Mac (Homebrew):  brew install ffmpeg
-   Windows:         download from https://ffmpeg.org/download.html
-                    and add ffmpeg to your PATH
-
-   Verify:  ffmpeg -version
-
-3] Install Python dependencies:
-
-   Mac:
-   pip3 install pyaaf2 moviepy
-
-
-   Windows:
-   pip install pyaaf2 moviepy
-
-4] Download this repository
-
-   git clone https://github.com/Filk/Veaper.git
-   or download the ZIP from GitHub.
-
-5] Open the terminal and go to the folder where Veaper.py is then run:
-   python3 -m pip install pyaaf2
-
-   and the run:
-   python3 -m pip install "moviepy>=2,<3"
-
+The Mac app built here is for Apple Silicon Macs.
 
 ---
-HOW TO USE
+WHAT THE APP CREATES
 
-1. Export an AAF from DaVinci Resolve (see tutorial link above).
-2. Keep all MXF (and other linked media) files in the same folder as the AAF.
-3. Open a terminal/command prompt and go to the Veaper folder.
-4. Run the app:
+Inside the folder where your AAF lives:
 
-   Mac:
-   python3 Veaper.py
+Reaper_from_DaVinci/my_project.rpp
+Reaper_from_DaVinci/*.wav
+Reaper_from_DaVinci/Audio_data_from_aaf.json
 
-   Windows:
-   python Veaper.py
+---
+BUILDING THE APP
 
-5. An app will open. Drag the aaf file onto the app and then wait.
+This is only for someone preparing a copy of Veaper for other people.
+The finished app does not need these tools.
 
-6. Open the output in Reaper:
+Mac (Apple Silicon), from this folder:
 
-   Inside the folder where your AAF lives, open:
-   Reaper_from_DaVinci/my_project.rpp
+/opt/homebrew/bin/python3.12 -m venv .venv
+.venv/bin/python build_standalone.py
 
-   That folder also contains:
-   - converted .wav files
-   - Audio_data_from_aaf.json (debug/reference data)
+The app is written to dist/Veaper.app
+A zip you can send is written to dist/Veaper-mac.zip
+
+Windows, from this folder, in Command Prompt:
+
+py -3.12 -m venv .venv
+.venv\Scripts\python build_standalone.py
+
+The program is written to dist\Veaper.exe
+
+A tagged GitHub release (v*) also builds both apps.
+
+---
+RUNNING FROM SOURCE
+
+Mac:
+python3 -m pip install pyaaf2
+brew install ffmpeg
+python3 Veaper.py
+
+Windows:
+py -3 -m pip install pyaaf2
+Install FFmpeg from https://ffmpeg.org/download.html and add it to PATH.
+py Veaper.py
+
+FFmpeg has to be available as the ffmpeg command. MoviePy is not used.
 
 ---
 NOTES
 
-- Pre-built Mac/Windows apps may not be available on the Releases page.
-  Running from source (instructions above) is the recommended method for now.
 - If the AAF references many MXF files, the first run may take several minutes.
 - Reaper resolves media paths relative to the .rpp file, so keep the WAV files
   inside Reaper_from_DaVinci/ alongside my_project.rpp.
-
----
-BUILDING A STANDALONE APP (OPTIONAL)
-
-Developers can package Veaper with PyInstaller:
-
-   pip install pyinstaller
-   pyinstaller --onefile --windowed Veaper.py
+- FFmpeg is bundled inside the standalone app and run as a separate program.
+  This copy is FFmpeg 9.0, licensed under the GNU GPL. Source and license:
+  https://ffmpeg.org/download.html
 
 ---
 CREDITS

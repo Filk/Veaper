@@ -5,10 +5,10 @@ import sys
 import wave
 import uuid
 import shutil
+import subprocess
 import urllib.parse
 import urllib.request
 import json
-from moviepy import AudioFileClip
 
 have_tk = False
 
@@ -489,12 +489,88 @@ def detect_sample_rate(wav_path):
         return None
 
 
+def find_ffmpeg():
+    """Locate FFmpeg inside a packaged app, next to the source, or on PATH."""
+    names = ["ffmpeg.exe", "ffmpeg"] if os.name == "nt" else ["ffmpeg"]
+    search_dirs = []
+
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", "")
+        exe_dir = os.path.dirname(sys.executable)
+        search_dirs.extend([meipass, exe_dir, os.path.join(exe_dir, "..", "Frameworks"), os.path.join(exe_dir, "..", "Resources")])
+    else:
+        here = os.path.dirname(os.path.abspath(__file__))
+        search_dirs.extend([here, os.path.join(here, "vendor")])
+
+    for folder in search_dirs:
+        if not folder:
+            continue
+        for name in names:
+            path = os.path.abspath(os.path.join(folder, name))
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+
+    raise RuntimeError(
+        "Veaper could not find FFmpeg, which converts MXF audio into WAV files.\n\n"
+        "The standalone Veaper app should already include FFmpeg. "
+        "Download the app again if this copy is incomplete.\n\n"
+        "If you are running Veaper from source, install FFmpeg, then open a new terminal "
+        "and check that the ffmpeg command works."
+    )
+
+
+def _subprocess_window_kwargs():
+    if os.name != "nt":
+        return {}
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    return {
+        "startupinfo": startupinfo,
+        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    }
+
+
 def convert_mxf_to_wav(mxf_path, wav_path):
-    audio_clip = AudioFileClip(mxf_path)
-    sample_rate = audio_clip.fps or 48000
-    audio_clip.write_audiofile(wav_path, fps=sample_rate, logger=None)
-    audio_clip.close()
-    return sample_rate
+    ffmpeg = find_ffmpeg()
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-nostdin",
+            "-y",
+            "-i",
+            mxf_path,
+            "-vn",
+            "-map",
+            "0:a:0",
+            "-c:a",
+            "pcm_s16le",
+            wav_path,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        errors="replace",
+        **_subprocess_window_kwargs(),
+    )
+    if result.returncode != 0 or not os.path.isfile(wav_path):
+        if os.path.isfile(wav_path):
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
+        detail = (result.stderr or result.stdout or "").strip().splitlines()
+        tail = "\n".join(detail[-8:])
+        raise RuntimeError(
+            "Could not convert this MXF file to WAV:\n%s\n\n%s"
+            % (os.path.basename(mxf_path), tail or "FFmpeg did not produce a WAV file.")
+        )
+
+    return detect_sample_rate(wav_path) or 48000
 
 
 def get_referenced_sources(data):
@@ -507,13 +583,23 @@ def get_referenced_sources(data):
     return sources
 
 
-def convert_referenced_media(sources, aaf_directory, destination_folder):
+def convert_referenced_media(sources, aaf_directory, destination_folder, on_status=None):
     sample_rates = []
+    warnings = []
+    ordered_sources = sorted(source for source in sources if source)
 
-    for source in sources:
+    if not ordered_sources:
+        warnings.append("No audio clips were found in this AAF. The Reaper project may be empty.")
+        return 48000, warnings
+
+    total = len(ordered_sources)
+    for index, source in enumerate(ordered_sources, start=1):
         resolved = resolve_media_path(source, aaf_directory)
+        label = os.path.basename(resolved or source) or source
         if not resolved or not os.path.isfile(resolved):
-            print("Missing media file: %s" % source, WARNING)
+            message = "Could not find \"%s\". Keep it in the same folder as the AAF file." % label
+            print(message, WARNING)
+            warnings.append(message)
             continue
 
         ext = os.path.splitext(resolved)[1].lower()
@@ -521,23 +607,32 @@ def convert_referenced_media(sources, aaf_directory, destination_folder):
             wav_name = os.path.splitext(os.path.basename(resolved))[0] + ".wav"
             wav_path = os.path.join(destination_folder, wav_name)
             if not os.path.isfile(wav_path):
+                if on_status:
+                    on_status("Converting %d of %d: %s" % (index, total, os.path.basename(resolved)))
                 print("Converting %s..." % os.path.basename(resolved))
                 rate = convert_mxf_to_wav(resolved, wav_path)
             else:
+                if on_status:
+                    on_status("Already converted %d of %d: %s" % (index, total, wav_name))
                 rate = detect_sample_rate(wav_path)
             if rate:
                 sample_rates.append(rate)
         elif ext == ".wav":
             dest_path = os.path.join(destination_folder, os.path.basename(resolved))
+            if on_status:
+                on_status("Copying %d of %d: %s" % (index, total, os.path.basename(resolved)))
             if os.path.abspath(resolved) != os.path.abspath(dest_path) and not os.path.isfile(dest_path):
                 shutil.copy2(resolved, dest_path)
             rate = detect_sample_rate(dest_path if os.path.isfile(dest_path) else resolved)
             if rate:
                 sample_rates.append(rate)
+        else:
+            if on_status:
+                on_status("Using %d of %d: %s" % (index, total, label))
 
     if sample_rates:
-        return max(set(sample_rates))
-    return 48000
+        return max(set(sample_rates)), warnings
+    return 48000, warnings
 
 
 def rewrite_sources_for_reaper(data, aaf_directory):
@@ -760,8 +855,13 @@ def parse_aaf(aaf_interface, filename, target):
     return aaf_interface.get_composition(composition_id)
 
 
-def import_aaf(myDirectory, myAAFfile):
+def import_aaf(myDirectory, myAAFfile, on_status=None):
     global log_level
+
+    def status(message):
+        print(message)
+        if on_status:
+            on_status(message)
 
     aaf_interface = AAFInterface(myDirectory)
     target = "Reaper_from_DaVinci"
@@ -772,19 +872,25 @@ def import_aaf(myDirectory, myAAFfile):
 
     log_level = NOTICE
 
+    status("Reading the AAF file...")
     composition = parse_aaf(aaf_interface, myAAFfile, destination_folder)
     if composition is None:
-        return
-
-    json_path = os.path.join(destination_folder, "Audio_data_from_aaf.json")
-    with open(json_path, "w") as json_file:
-        json.dump(composition, json_file, indent=4)
+        raise RuntimeError(
+            "Could not open this AAF file. Export it again from DaVinci Resolve and try once more."
+        )
 
     referenced_sources = get_referenced_sources(composition)
-    sample_rate = convert_referenced_media(referenced_sources, myDirectory, destination_folder)
+    sample_rate, warnings = convert_referenced_media(
+        referenced_sources,
+        myDirectory,
+        destination_folder,
+        on_status=status,
+    )
 
+    status("Writing the Reaper project...")
     rewrite_sources_for_reaper(composition, myDirectory)
 
+    json_path = os.path.join(destination_folder, "Audio_data_from_aaf.json")
     with open(json_path, "w") as json_file:
         json.dump(composition, json_file, indent=4)
 
@@ -795,4 +901,10 @@ def import_aaf(myDirectory, myAAFfile):
         file.write(reaper_project)
 
     print("Reaper project written to %s" % rpp_path)
+    status("Done.")
+    return {
+        "project": rpp_path,
+        "folder": destination_folder,
+        "warnings": warnings,
+    }
 
