@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import subprocess
@@ -116,7 +117,8 @@ class VeaperApp(tk.Tk):
 
         ttk.Label(
             frame,
-            text="Keep every MXF file in that same folder. Veaper converts the audio to WAV and writes a Reaper project next to the AAF.",
+            text="Keep every MXF file and the video in that same folder. Veaper converts them and writes "
+            "a Reaper project in a new folder next to the AAF's folder.",
             wraplength=500,
         ).grid(row=5, column=0, sticky="w", pady=(0, 14))
 
@@ -223,10 +225,7 @@ class VeaperApp(tk.Tk):
         try:
             from veaperProcessing import import_aaf
 
-            workdir = os.path.dirname(self.aaf_path)
-            os.chdir(workdir)
             result = import_aaf(
-                workdir,
                 self.aaf_path,
                 on_status=lambda message: self.after(0, self.status_var.set, message),
             )
@@ -245,13 +244,14 @@ class VeaperApp(tk.Tk):
         self._set_idle()
         self.project_path = result["project"]
         self.show_button.state(["!disabled"])
-        self.status_var.set("Done. The Reaper project is in the same folder as the AAF, inside Reaper_from_DaVinci.")
+        self.status_var.set("Done. The Reaper project is in a new folder next to the AAF's folder.")
 
         lines = [
             "The Reaper project is ready:",
             result["project"],
             "",
-            "Open my_project.rpp in Reaper. Leave the WAV files in that folder.",
+            "Open %s in Reaper. Leave the audio and video files in that folder."
+            % os.path.basename(result["project"]),
         ]
         warnings = result.get("warnings") or []
         if warnings:
@@ -287,6 +287,8 @@ def main():
             output_path = sys.argv[index + 1]
         raise SystemExit(run_self_check(output_path))
 
+    if sys.stderr:  # Windowed apps have no console to log to.
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     app = VeaperApp()
     app.mainloop()
 
