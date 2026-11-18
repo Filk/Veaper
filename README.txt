@@ -1,9 +1,10 @@
 VEAPER
 Convert a DaVinci Resolve AAF export into a Reaper project (.rpp).
 
-Veaper reads the timeline from a Resolve AAF file, converts referenced MXF audio
-to WAV, and builds a Reaper project with clip positions, source in-points,
-fades, volume, pan, and playback speed where available in the AAF.
+Veaper reads the timeline from a Resolve AAF file, converts the audio it uses to
+WAV (keeping its sample rate and bit depth) and the video to a copy Reaper plays
+well, and builds a Reaper project with clip positions, source in-points, fades,
+volume, pan, markers, playback speed and a video track where available in the AAF.
 
 Step-by-step tutorial for exporting from DaVinci Resolve:
 https://filipelopes.net/veaper
@@ -22,8 +23,8 @@ Mac
    and click Open Anyway.
 4. Click "1. Choose AAF file".
 5. Click "2. Create Reaper project" and wait. Large projects take a few minutes.
-6. Open the project in Reaper:
-   inside the AAF's folder, open Reaper_from_DaVinci/my_project.rpp
+6. Open the project in Reaper. It is in a new folder next to the AAF's folder,
+   named after the timeline: "My Timeline - Reaper/My Timeline.rpp"
 
 You can also drop an AAF file onto the Veaper icon.
 
@@ -33,19 +34,27 @@ Windows
    Windows may ask you to confirm because the app is not from the Store.
 3. Follow the same two steps as on Mac.
 
-Keep every MXF file in the same folder as the AAF. The WAV files have to stay
-next to my_project.rpp, or Reaper will not find them.
+Keep every MXF file, and the timeline's video, in the same folder as the AAF.
+The audio and video files have to stay next to the .rpp, or Reaper will not
+find them.
 
 The Mac app built here is for Apple Silicon Macs.
 
 ---
 WHAT THE APP CREATES
 
-Inside the folder where your AAF lives:
+A new folder next to the folder where your AAF lives (not inside it), named
+after the timeline:
 
-Reaper_from_DaVinci/my_project.rpp
-Reaper_from_DaVinci/*.wav
-Reaper_from_DaVinci/Audio_data_from_aaf.json
+My Timeline - Reaper/My Timeline.rpp
+My Timeline - Reaper/*.wav
+My Timeline - Reaper/*.mp4
+My Timeline - Reaper/Audio_data_from_aaf.json
+
+The folder is self-contained, so you can move or archive it on its own.
+The video is an H.264 .mp4 (or an MJPEG .avi if FFmpeg has no H.264 encoder)
+on its own track at the top of the project. Clips made of one mono file per
+channel are merged into one multichannel WAV.
 
 ---
 BUILDING THE APP
@@ -85,12 +94,17 @@ py Veaper.py
 
 FFmpeg has to be available as the ffmpeg command. MoviePy is not used.
 
+Without the window, from a terminal:
+python3 veaperProcessing.py path/to/timeline.aaf
+Add -o path/to/folder to choose where the project goes.
+
 ---
 NOTES
 
-- If the AAF references many MXF files, the first run may take several minutes.
-- Reaper resolves media paths relative to the .rpp file, so keep the WAV files
-  inside Reaper_from_DaVinci/ alongside my_project.rpp.
+- If the AAF references many MXF files or a long video, the first run may take
+  several minutes. Running it again only redoes files whose sources changed.
+- Reaper resolves media paths relative to the .rpp file, so keep the media
+  files in the project folder alongside the .rpp.
 - FFmpeg is bundled inside the standalone app and run as a separate program.
   This copy is FFmpeg 9.0, licensed under the GNU GPL. Source and license:
   https://ffmpeg.org/download.html
